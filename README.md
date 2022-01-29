@@ -3,6 +3,19 @@
 
 The purpose of this package is to provide asynchronous variants of the builtin `input` and `print` functions. `print` is known to be relatively slow compared to other operations. `input` is even slower because it has to wait for user input. While these slow IO operations are being ran, code using `asyncio` should be able to continuously run.
 
+PIP Installing
+---------------
+
+For Unix/macOS:
+```
+python3 -m pip install aio
+```
+
+For Windows:
+```
+py -m pip install aio
+```
+
 ainput and aprint
 ------------------
 

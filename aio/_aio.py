@@ -1,4 +1,4 @@
-"""
+'''
 The purpose of this package is to provide asynchronous variants of
 the builtin `input` and `print` functions. `print` is known to be
 relatively slow compared to other operations. `input` is even slower
@@ -159,7 +159,7 @@ Common Gotchas
   wait for the lock to release. As such, the `io_lock` is equipped
   with a default `timeout` limit of 10 seconds to avoid deadlock
   and explain to users this potential problem.
-"""
+'''
 from __future__ import annotations
 from asyncio import Queue
 from enum import Enum

@@ -164,7 +164,7 @@ from __future__ import annotations
 from asyncio import Queue
 from enum import Enum
 from functools import partial
-from typing import Any, ClassVar, Dict, Generic, IO, Literal, Optional, Tuple, Type, TypedDict, TypeVar, final
+from typing import Any, ClassVar, Dict, Generic, IO, Literal, Optional, Tuple, Type, TypedDict, TypeVar
 
 import asyncio
 import logging
@@ -174,6 +174,7 @@ __all__ = ["IOLock", "ainput", "aprint", "flush"]
 
 T = TypeVar("T")
 
+# Make `asyncio.Queue` generic for type-hinting.
 if sys.version_info < (3, 9):
 
     class Queue(Queue, Generic[T]):
@@ -237,7 +238,6 @@ class PrintKwargs(TypedDict, total=False):
 IOQueueType = Queue[Tuple[bool, Optional[asyncio.Event], Tuple[str, ...], PrintKwargs]]
 
 
-@final
 class IOLock(asyncio.Lock):
     """
     The `IOLock` may be used to control the order with which `ainput` and
@@ -557,7 +557,6 @@ class IOLock(asyncio.Lock):
         return self._timeout
 
 
-@final
 class Flush(Enum):
     """Use `async with flush: ...` to flush all io before exiting."""
     flush = ()

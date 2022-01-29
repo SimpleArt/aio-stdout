@@ -1,5 +1,5 @@
-# aio
- Asynchronous Input Output
+# aio_stdout
+ Asynchronous Input Output - Stdout
 
 The purpose of this package is to provide asynchronous variants of the builtin `input` and `print` functions. `print` is known to be relatively slow compared to other operations. `input` is even slower because it has to wait for user input. While these slow IO operations are being ran, code using `asyncio` should be able to continuously run.
 
@@ -8,22 +8,22 @@ PIP Installing
 
 For Unix/macOS:
 ```
-python3 -m pip install aio
+python3 -m pip install aio-stdout
 ```
 
 For Windows:
 ```
-py -m pip install aio
+py -m pip install aio-stdout
 ```
 
 ainput and aprint
 ------------------
 
-With `aio`, the `aio.ainput` and `aio.aprint` functions provide easy to use functionality with organized behaviour.
+With `aio_stdout`, the `aio_stdout.ainput` and `aio_stdout.aprint` functions provide easy to use functionality with organized behaviour.
 
 ```python
 import asyncio
-from aio import ainput, aprint
+from aio_stdout import ainput, aprint
 
 async def countdown(n: int) -> None:
     """Count down from `n`, taking `n` seconds to run."""
@@ -73,11 +73,11 @@ It is worth noting that with naive threading, a normal attempt to use `print` wh
 IO Locks
 ---------
 
-Although the asynchronization behaviors of `ainput` and `aprint` are nice, sometimes we want to be able to synchronize our messages even more. IO locks provide a way to group messages together, locking the global `aio` queues until it finishes or yields access.
+Although the asynchronization behaviors of `ainput` and `aprint` are nice, sometimes we want to be able to synchronize our messages even more. IO locks provide a way to group messages together, locking the global `aio_stdout` queues until it finishes or yields access.
 
 ```python
 import asyncio
-from aio import IOLock, ainput, aprint
+from aio_stdout import IOLock, ainput, aprint
 
 async def countdown(n: int) -> None:
     """Count down from `n`, taking `n` seconds to run."""
@@ -130,10 +130,10 @@ Flushing
 Since messages may be delayed, it is possible for your asynchronous code to finish running before all messages are displayed, producing confusing results. As such, the best recommended practice is to flush from `main` before terminating.
 
 ```python
-import aio
+from aio_stdout import flush
 
 async def main() -> None:
-    async with aio.flush:
+    async with flush:
         pass
 ```
 

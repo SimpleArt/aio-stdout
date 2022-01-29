@@ -9,12 +9,12 @@ continuously run.
 ainput and aprint
 ------------------
 
-With `aio`, the `aio.ainput` and `aio.aprint` functions provide easy
-to use functionality with organized behaviour.
+With `aio_stdout`, the `aio_stdout.ainput` and `aio_stdout.aprint`
+functions provide easy to use functionality with organized behaviour.
 
 ```python
 import asyncio
-from aio import ainput, aprint
+from aio_stdout import ainput, aprint
 
 async def countdown(n: int) -> None:
     """Count down from `n`, taking `n` seconds to run."""
@@ -76,11 +76,11 @@ IO Locks
 Although the asynchronization behaviors of `ainput` and `aprint` are
 nice, sometimes we want to be able to synchronize our messages even
 more. IO locks provide a way to group messages together, locking the
-global `aio` queues until it finishes or yields access.
+global `aio_stdout` queues until it finishes or yields access.
 
 ```python
 import asyncio
-from aio import IOLock, ainput, aprint
+from aio_stdout import IOLock, ainput, aprint
 
 async def countdown(n: int) -> None:
     """Count down from `n`, taking `n` seconds to run."""
@@ -141,10 +141,10 @@ confusing results. As such, the best recommended practice is to flush
 from `main` before terminating.
 
 ```python
-import aio
+from aio_stdout import flush
 
 async def main() -> None:
-    async with aio.flush:
+    async with flush:
         pass
 ```
 

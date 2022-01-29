@@ -161,14 +161,68 @@ Common Gotchas
   and explain to users this potential problem.
 """
 from __future__ import annotations
+from asyncio import Queue
 from enum import Enum
 from functools import partial
-import logging
-from typing import Any, ClassVar, Dict, IO, Literal, Optional, Tuple, TypedDict, final
+from typing import Any, ClassVar, Dict, Generic, IO, Literal, Optional, Tuple, Type, TypedDict, TypeVar, final
 
 import asyncio
+import logging
+import sys
 
 __all__ = ["IOLock", "ainput", "aprint", "flush"]
+
+T = TypeVar("T")
+
+if sys.version_info < (3, 9):
+
+    class Queue(Queue, Generic[T]):
+        """
+        A queue, useful for coordinating producer and consumer coroutines.
+
+        If maxsize is less than or equal to zero, the queue size is infinite. If it
+        is an integer greater than 0, then "await put()" will block when the
+        queue reaches maxsize, until an item is removed by get().
+
+        Unlike the standard library Queue, you can reliably know this Queue's size
+        with qsize(), since your single-threaded asyncio application won't be
+        interrupted between calling qsize() and doing an operation on the Queue.
+        """
+        __slots__ = ()
+
+        async def get(self: Queue[T], /) -> T:
+            """
+            Remove and return an item from the queue.
+
+            If queue is empty, wait until an item is available.
+            """
+            return await super().get()
+
+        def get_nowait(self: Queue[T], /) -> T:
+            """
+            Remove and return an item from the queue.
+
+            Return an item if one is immediately available, else raise QueueEmpty.
+            """
+            return super().get_nowait()
+
+        async def put(self: Queue[T], item: T, /) -> T:
+            """
+            Put an item into the queue.
+
+            Put an item into the queue. If the queue is full, wait until a free
+            slot is available before adding item.
+            """
+            return await super().put(item)
+
+        def put_nowait(self: Queue[T], item: T, /) -> T:
+            """
+            Put an item into the queue without blocking.
+
+            If no free slot is immediately available, raise QueueFull.
+            """
+            return super().put_nowait(item)
+
 
 logger = logging.getLogger(__name__)
 
@@ -180,7 +234,7 @@ class PrintKwargs(TypedDict, total=False):
     flush: Any
 
 
-IOQueueType = asyncio.Queue[Tuple[bool, Optional[asyncio.Event], Tuple[str, ...], PrintKwargs]]
+IOQueueType = Queue[Tuple[bool, Optional[asyncio.Event], Tuple[str, ...], PrintKwargs]]
 
 
 @final
@@ -233,7 +287,7 @@ class IOLock(asyncio.Lock):
     With the default `io_lock.timeout` however, such deadlocks only hold for 10 seconds.
     """
     _class_is_finished: ClassVar[asyncio.Event] = asyncio.Event()
-    _class_queue: ClassVar[asyncio.Queue[Tuple[Optional[float], IOQueueType, asyncio.Event, asyncio.Event]]] = asyncio.Queue()
+    _class_queue: ClassVar[Queue[Tuple[Optional[float], IOQueueType, asyncio.Event, asyncio.Event]]] = Queue()
     _i: int
     _is_awake: asyncio.Event
     _is_finished: asyncio.Event
@@ -260,7 +314,7 @@ class IOLock(asyncio.Lock):
         self._is_awake = asyncio.Event()
         self._is_finished = asyncio.Event()
         self._n = n
-        self._queue = asyncio.Queue()
+        self._queue = Queue()
         self._timeout = float(timeout) if isinstance(timeout, int) else timeout
         # The lock is not sleeping because it's not being executed.
         self._is_awake.set()
@@ -314,7 +368,7 @@ class IOLock(asyncio.Lock):
         self._is_finished.set()
         # Collect future IO in an empty queue.
         if not self._queue.empty():
-            self._queue = asyncio.Queue()
+            self._queue = Queue()
 
     @classmethod
     async def __exhaust_queue(cls: Type[IOLock], io_queue: IOQueueType, /) -> None:
@@ -399,7 +453,7 @@ class IOLock(asyncio.Lock):
                         "inside of an `io_lock` block."
                     )
                 # Insert the global queue into the class queue.
-                global_queue = asyncio.Queue()
+                global_queue = Queue()
                 for _ in range(IO_QUEUE.qsize()):
                     global_queue.put_nowait(IO_QUEUE.get_nowait())
                 global_is_finished = asyncio.Event()
@@ -430,7 +484,7 @@ class IOLock(asyncio.Lock):
             # Use a new `is_finished` event.
             self._is_finished = asyncio.Event()
             # Use a new `queue`.
-            self._queue = asyncio.Queue()
+            self._queue = Queue()
             # Re-add it to the class queue.
             type(self)._class_queue.put_nowait((self.timeout, self._queue, self._is_awake, self._is_finished))
         # The io lock is no longer sleeping, if it was.
@@ -520,7 +574,7 @@ class Flush(Enum):
 flush: Flush = Flush.flush
 
 INPUT_RESULTS: Dict[asyncio.Event, Union[Tuple[Literal[False], str], Tuple[Literal[True], Exception]]] = {}
-IO_QUEUE: IOQueueType = asyncio.Queue()
+IO_QUEUE: IOQueueType = Queue()
 IS_FINISHED: asyncio.Event = asyncio.Event()
 PRINT_EXCEPTIONS: Dict[asyncio.Event, Exception] = {}
 

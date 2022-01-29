@@ -171,12 +171,12 @@ name = None
 method = None
 
 # Finalize type-hints.
-for obj in list(vars().values()):
+for obj in (IOLock, ainput, aprint, flush):
     if isinstance(obj, FunctionType):
         obj.__annotations__ = get_type_hints(obj)
-    elif not isinstance(obj, type):
+    if not isinstance(obj, type):
         continue
-    obj.__annotations__ = get_type_hints(cls)
+    obj.__annotations__ = get_type_hints(obj)
     for name, method in vars(obj).items():
         if isinstance(method, classmethod):
             method.__func__.__annotations__ = get_type_hints(method.__func__)

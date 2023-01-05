@@ -203,17 +203,6 @@ from functools import partial
 from types import TracebackType
 from typing import Any, ClassVar, Generic, IO, NoReturn, Optional, TypeVar, Union, get_type_hints, overload
 
-if sys.version_info < (3, 9):
-    from typing import Dict, Tuple, Type
-else:
-    from builtins import dict as Dict, tuple as Tuple, type as Type
-
-if sys.version_info < (3, 11):
-    from typing import NoReturn as Never
-    Self = TypeVar("Self", bound="IOLock")
-else:
-    from typing import Never, Self
-
 if sys.version_info < (3, 8):
     from builtins import dict as PrintKwargs
 else:
@@ -226,8 +215,16 @@ else:
 # Make `asyncio.Queue` generic for type-hinting.
 if sys.version_info < (3, 9):
     from asyncio import Queue as IOQueueType
+    from typing import Dict, Tuple, Type
 else:
+    from builtins import dict as Dict, tuple as Tuple, type as Type
     IOQueueType = Queue[Tuple[bool, Optional[asyncio.Event], Tuple[str, ...], PrintKwargs]]
+
+if sys.version_info < (3, 11):
+    from typing import NoReturn as Never
+    Self = TypeVar("Self", bound="IOLock")
+else:
+    from typing import Never, Self
 
 __all__ = ["IOLock", "ainput", "aprint", "flush"]
 
@@ -312,10 +309,12 @@ class IOLock(asyncio.Lock):
     With the default `lock.timeout` however, such deadlocks only hold for 10 seconds.
     """
     _class_is_finished: ClassVar[asyncio.Event] = asyncio.Event()
+
     if sys.version_info < (3, 9):
         _class_queue: ClassVar[Queue] = Queue()
     else:
         _class_queue: ClassVar[Queue[Tuple[Optional[float], IOQueueType, asyncio.Event, asyncio.Event]]] = Queue()
+
     _i: int
     _is_awake: asyncio.Event
     _is_finished: asyncio.Event

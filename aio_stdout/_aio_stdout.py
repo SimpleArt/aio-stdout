@@ -166,6 +166,7 @@ import sys
 import typing
 
 from asyncio import Queue
+from contextlib import AsyncContextDecorator
 from enum import Enum
 from functools import partial
 from types import TracebackType
@@ -539,8 +540,20 @@ class IOLock(asyncio.Lock):
         return self._timeout
 
 
-class Flush(Enum):
-    """Use `async with flush: ...` to flush all io before exiting."""
+class Flush(AsyncContextDecorator, Enum):
+    """
+    Helper class to block until all io is flushed.
+
+    Decorator Usage:
+        @flush
+        async def main() -> None:
+            ...
+
+    Context Manager Usage:
+        async def main() -> None:
+            async with flush:
+                ...
+    """
     flush = ()
 
     async def __aenter__(self: "Flush") -> None:
@@ -625,10 +638,7 @@ async def ainput(*args: Any) -> str:
         Since `ainput` only queues a prompt to be printed evantually,
         it may not print anything if the `asyncio` loop terminates first.
         In order to flush out all remaining `aprint`s and `ainput`s, use
-            >>> async with flush:
-            ...     pass  # Main code.
-            ...
-        at the end of the main code to wait until all other code gets to print.
+        `aio_stdout.flush`. See `help(aio_stdout.flush)` for more details.
     """
     # Perform early type-checking on args.
     if len(args) > 1:
@@ -674,10 +684,7 @@ async def aprint(*args: Any, block: bool = False, **kwargs: Any) -> None:
         Since `aprint` only queues a message to be printed evantually,
         it may not print anything if the `asyncio` loop terminates first.
         In order to flush out all remaining `aprint`s and `ainput`s, use
-            >>> async with flush:
-            ...     pass  # Main code.
-            ...
-        at the end of the main code to wait until all other code gets to print.
+        `aio_stdout.flush`. See `help(aio_stdout.flush)` for more details.
     """
     # Perform early type-checking on kwargs.
     for kwarg, value in kwargs.items():

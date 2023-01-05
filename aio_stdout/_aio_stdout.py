@@ -160,82 +160,47 @@ Common Gotchas
   with a default `timeout` limit of 10 seconds to avoid deadlock
   and explain to users this potential problem.
 '''
-from __future__ import annotations
-from asyncio import Queue
-from enum import Enum
-from functools import partial
-from typing import Any, ClassVar, Dict, Generic, IO, Literal, Optional, Tuple, Type, TypedDict, TypeVar
-
 import asyncio
 import logging
 import sys
+import typing
+
+from asyncio import Queue
+from enum import Enum
+from functools import partial
+from typing import Any, ClassVar, Generic, IO, NoReturn, Optional, TypeVar, Union, overload
+
+if sys.version_info < (3, 9):
+    from typing import Dict, Tuple, Type
+else:
+    from builtins import dict as Dict, tuple as Tuple, type as Type
+
+if sys.version_info < (3, 11):
+    from typing import NoReturn as Never
+    Self = TypeVar("Self", bound="IOLock")
+else:
+    from typing import Never, Self
+
+if sys.version_info < (3, 8):
+    from builtins import dict as PrintKwargs
+else:
+    class PrintKwargs(typing.TypedDict, total=False):
+        sep: Optional[str]
+        end: Optional[str]
+        file: IO
+        flush: Any
+
+# Make `asyncio.Queue` generic for type-hinting.
+if sys.version_info < (3, 9):
+    from asyncio import Queue as IOQueueType
+else:
+    IOQueueType = Queue[Tuple[bool, Optional[asyncio.Event], Tuple[str, ...], PrintKwargs]]
 
 __all__ = ["IOLock", "ainput", "aprint", "flush"]
 
 T = TypeVar("T")
 
-# Make `asyncio.Queue` generic for type-hinting.
-if sys.version_info < (3, 9):
-
-    class Queue(Queue, Generic[T]):
-        """
-        A queue, useful for coordinating producer and consumer coroutines.
-
-        If maxsize is less than or equal to zero, the queue size is infinite. If it
-        is an integer greater than 0, then "await put()" will block when the
-        queue reaches maxsize, until an item is removed by get().
-
-        Unlike the standard library Queue, you can reliably know this Queue's size
-        with qsize(), since your single-threaded asyncio application won't be
-        interrupted between calling qsize() and doing an operation on the Queue.
-        """
-        __slots__ = ()
-
-        async def get(self: Queue[T], /) -> T:
-            """
-            Remove and return an item from the queue.
-
-            If queue is empty, wait until an item is available.
-            """
-            return await super().get()
-
-        def get_nowait(self: Queue[T], /) -> T:
-            """
-            Remove and return an item from the queue.
-
-            Return an item if one is immediately available, else raise QueueEmpty.
-            """
-            return super().get_nowait()
-
-        async def put(self: Queue[T], item: T, /) -> T:
-            """
-            Put an item into the queue.
-
-            Put an item into the queue. If the queue is full, wait until a free
-            slot is available before adding item.
-            """
-            return await super().put(item)
-
-        def put_nowait(self: Queue[T], item: T, /) -> T:
-            """
-            Put an item into the queue without blocking.
-
-            If no free slot is immediately available, raise QueueFull.
-            """
-            return super().put_nowait(item)
-
-
 logger = logging.getLogger(__name__)
-
-
-class PrintKwargs(TypedDict, total=False):
-    sep: Optional[str]
-    end: Optional[str]
-    file: IO
-    flush: Any
-
-
-IOQueueType = Queue[Tuple[bool, Optional[asyncio.Event], Tuple[str, ...], PrintKwargs]]
 
 
 class IOLock(asyncio.Lock):
@@ -287,7 +252,10 @@ class IOLock(asyncio.Lock):
     With the default `io_lock.timeout` however, such deadlocks only hold for 10 seconds.
     """
     _class_is_finished: ClassVar[asyncio.Event] = asyncio.Event()
-    _class_queue: ClassVar[Queue[Tuple[Optional[float], IOQueueType, asyncio.Event, asyncio.Event]]] = Queue()
+    if sys.version_info < (3, 9):
+        _class_queue: ClassVar[Queue] = Queue()
+    else:
+        _class_queue: ClassVar[Queue[Tuple[Optional[float], IOQueueType, asyncio.Event, asyncio.Event]]] = Queue()
     _i: int
     _is_awake: asyncio.Event
     _is_finished: asyncio.Event
@@ -300,7 +268,7 @@ class IOLock(asyncio.Lock):
     # Finished running IO because there's nothing being ran yet.
     _class_is_finished.set()
 
-    def __init__(self: IOLock, /, *args: Any, n: Optional[int] = None, timeout: Optional[float] = 10, **kwargs: Any) -> None:
+    def __init__(self: Self, *args: Any, n: Optional[int] = None, timeout: Optional[float] = 10, **kwargs: Any) -> None:
         if n is not None and not isinstance(n, int):
             raise TypeError(f"n must be an integer or None, got {x!r}")
         elif timeout is not None and not isinstance(timeout, (int, float)):
@@ -321,12 +289,24 @@ class IOLock(asyncio.Lock):
         # Finished running IO because there's nothing being ran yet.
         self._is_finished.set()
 
-    async def __aenter__(self: IOLock, /) -> IOLock:
+    async def __aenter__(self: Self) -> Self:
         """Acquire the lock and return itself."""
         await super().__aenter__()
         return self
 
-    async def acquire(self: IOLock, /) -> Literal[True]:
+    @overload
+    async def acquire(self: Self, _: Never) -> NoReturn:
+        ...
+
+    if sys.version_info < (3, 8):
+        async def acquire(self: Self) -> bool:
+            ...
+
+    else:
+        async def acquire(self: Self) -> typing.Literal[True]:
+            ...
+
+    async def acquire(self):
         """
         Acquire a lock.
 
@@ -346,7 +326,7 @@ class IOLock(asyncio.Lock):
             # The lock is sleeping because there's nothing being ran yet.
             self._is_awake.clear()
 
-    def release(self: IOLock, /) -> None:
+    def release(self: Self) -> None:
         """
         Release a lock.
 
@@ -371,7 +351,7 @@ class IOLock(asyncio.Lock):
             self._queue = Queue()
 
     @classmethod
-    async def __exhaust_queue(cls: Type[IOLock], io_queue: IOQueueType, /) -> None:
+    async def __exhaust_queue(cls: Type[Self], io_queue: IOQueueType) -> None:
         """Helper method to exhaust a queue."""
         # Otherwise the io lock is not sleeping and the io queue should be exhausted.
         while not io_queue.empty():
@@ -397,13 +377,13 @@ class IOLock(asyncio.Lock):
             io_queue.task_done()
 
     @classmethod
-    async def __wait_event(cls: Type[IOLock], event: asyncio.Event, message: str, /) -> str:
+    async def __wait_event(cls: Type[Self], event: asyncio.Event, message: str) -> str:
         """Helper method to wait until an event occurs."""
         await event.wait()
         return message
 
     @classmethod
-    async def _execute_io(cls: Type[IOLock], /) -> None:
+    async def _execute_io(cls: Type[Self]) -> None:
         """Helper method for executing IO requests."""
         while not cls._class_queue.empty():
             timeout, io_queue, is_awake, is_finished = await cls._class_queue.get()
@@ -415,27 +395,27 @@ class IOLock(asyncio.Lock):
                 await cls.__exhaust_queue(io_queue)
                 # Sleep once all tasks are done.
                 is_awake.clear()
-                tasks = [is_finished_task]
-                tasks.append(asyncio.create_task(cls.__wait_event(is_awake, "awake")))
+                # Wait until the queue is either finished or awake.
+                tasks = [
+                    is_finished_task,
+                    asyncio.create_task(cls.__wait_event(is_awake, "awake")),
+                ]
                 if timeout is None:
                     as_completed = asyncio.as_completed(tasks)
                 else:
                     as_completed = asyncio.as_completed(tasks, timeout=timeout)
-                # Wait until one of the tasks is done.
                 for task in as_completed:
                     try:
                         task_type = await task
                     except asyncio.TimeoutError:
                         task_type = "timeout"
                     break
-                del tasks[0]
-                for task in tasks:
-                    task.cancel()
-                for task in tasks:
-                    try:
-                        await task
-                    except asyncio.CancelledError:
-                        pass
+                # Stop checking if it is awake or not.
+                tasks[1].cancel()
+                try:
+                    await tasks[1]
+                except asyncio.CancelledError:
+                    pass
             cls._class_queue.task_done()
             # Wake up if finished.
             if task_type == "finished":
@@ -467,7 +447,7 @@ class IOLock(asyncio.Lock):
             IS_FINISHED.clear()
             asyncio.create_task(_execute_io())
 
-    def _schedule_io(self: IOLock, is_print: bool, event: Optional[asyncio.Event], args: Tuple[str, ...], kwargs: Optional[PrintKwargs], /) -> None:
+    def _schedule_io(self: Self, is_print: bool, event: Optional[asyncio.Event], args: Tuple[str, ...], kwargs: Optional[PrintKwargs]) -> None:
         """Helper method for scheduling IO requests."""
         # Insert the next IO request.
         self._queue.put_nowait((is_print, event, args, kwargs))
@@ -491,7 +471,7 @@ class IOLock(asyncio.Lock):
         else:
             self._is_awake.set()
 
-    async def ainput(self: IOLock, /, *args: Any) -> str:
+    async def ainput(self: Self, *args: Any) -> str:
         """Locked version of `ainput`. See `ainput` for more details."""
         # Perform early type-checking on args.
         if len(args) > 1:
@@ -512,7 +492,7 @@ class IOLock(asyncio.Lock):
         else:
             return response
 
-    async def aprint(self: IOLock, /, *args: Any, block: bool = False, **kwargs: Any) -> None:
+    async def aprint(self: Self, *args: Any, block: bool = False, **kwargs: Any) -> None:
         """Locked version of `aprint`. See `aprint` for more details."""
         # Perform early type-checking on kwargs.
         for kwarg, value in kwargs.items():
@@ -537,7 +517,7 @@ class IOLock(asyncio.Lock):
             await asyncio.sleep(0)
 
     @property
-    def n(self: IOLock, /) -> Optional[int]:
+    def n(self: Self) -> Optional[int]:
         """
         The number of io requests that can be queued at a time
         before letting other io requests go through.
@@ -547,7 +527,7 @@ class IOLock(asyncio.Lock):
         return self._n
 
     @property
-    def timeout(self: IOLock, /) -> Optional[float]:
+    def timeout(self: Self) -> Optional[float]:
         """
         The number of seconds the io lock can sleep before letting other
         io requests go through.
@@ -561,10 +541,10 @@ class Flush(Enum):
     """Use `async with flush: ...` to flush all io before exiting."""
     flush = ()
 
-    async def __aenter__(self: Flush, /) -> None:
+    async def __aenter__(self: "Flush") -> None:
         pass
 
-    async def __aexit__(self: Flush, /, *args: Any) -> None:
+    async def __aexit__(self: "Flush", *args: Any) -> None:
         """Waits until all IO is flushed."""
         await IOLock._class_is_finished.wait()
         await IS_FINISHED.wait()
@@ -572,7 +552,10 @@ class Flush(Enum):
 
 flush: Flush = Flush.flush
 
-INPUT_RESULTS: Dict[asyncio.Event, Union[Tuple[Literal[False], str], Tuple[Literal[True], Exception]]] = {}
+if sys.version_info < (3, 8):
+    INPUT_RESULTS: Dict[asyncio.Event, Tuple[bool, Union[Exception, str]]] = {}
+else:
+    INPUT_RESULTS: Dict[asyncio.Event, Union[Tuple[typing.Literal[False], str], Tuple[typing.Literal[True], Exception]]] = {}
 IO_QUEUE: IOQueueType = Queue()
 IS_FINISHED: asyncio.Event = asyncio.Event()
 PRINT_EXCEPTIONS: Dict[asyncio.Event, Exception] = {}
@@ -608,7 +591,7 @@ async def _execute_io() -> None:
     # Signal no io requests are being executed.
     IS_FINISHED.set()
 
-def _schedule_io(is_print: bool, event: Optional[asyncio.Event], args: Tuple[str, ...], kwargs: Optional[PrintKwargs], /) -> None:
+def _schedule_io(is_print: bool, event: Optional[asyncio.Event], args: Tuple[str, ...], kwargs: Optional[PrintKwargs]) -> None:
     """Helper function for scheduling IO requests."""
     # Insert the next IO request.
     IO_QUEUE.put_nowait((is_print, event, args, kwargs))

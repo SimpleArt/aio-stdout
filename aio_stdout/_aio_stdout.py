@@ -168,6 +168,7 @@ import typing
 from asyncio import Queue
 from enum import Enum
 from functools import partial
+from types import TracebackType
 from typing import Any, ClassVar, Generic, IO, NoReturn, Optional, TypeVar, Union, overload
 
 if sys.version_info < (3, 9):
@@ -199,6 +200,7 @@ else:
 __all__ = ["IOLock", "ainput", "aprint", "flush"]
 
 T = TypeVar("T")
+ET = TypeVar("ET", bound=BaseException)
 
 logger = logging.getLogger(__name__)
 
@@ -544,7 +546,12 @@ class Flush(Enum):
     async def __aenter__(self: "Flush") -> None:
         pass
 
-    async def __aexit__(self: "Flush", *args: Any) -> None:
+    async def __aexit__(
+        self: "Flush",
+        exc_type: Optional[Type[ET]],
+        exc_value: Optional[ET],
+        traceback: Optional[TracebackType],
+    ) -> None:
         """Waits until all IO is flushed."""
         await IOLock._class_is_finished.wait()
         await IS_FINISHED.wait()

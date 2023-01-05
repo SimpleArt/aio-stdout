@@ -84,16 +84,16 @@ from aio_stdout import IOLock, ainput, aprint
 
 async def countdown(n: int) -> None:
     """Count down from `n`, taking `n` seconds to run."""
-    async with IOLock(n=5) as io_lock:
+    async with IOLock(n=5) as lock:
         for i in range(n, 0, -1):
-            await io_lock.aprint(i)
+            await lock.aprint(i)
             await asyncio.sleep(1)
 
 async def get_name() -> str:
     """Ask the user for their name."""
-    async with IOLock() as io_lock:
-        name = await io_lock.ainput("What is your name? ")
-        await io_lock.aprint(f"Your name is {name}.")
+    async with IOLock() as lock:
+        name = await lock.ainput("What is your name? ")
+        await lock.aprint(f"Your name is {name}.")
     return name
 
 async def main() -> None:
@@ -127,9 +127,9 @@ Your name is Jane.
 
 Notice that this time the `countdown` does not immediately yield to
 the `get_name`. Instead, it runs 5 messages before yielding control
-over to `get_name`. Now, after the `ainput` finishes, it does not
-yield to `countdown`. Instead, it runs its own `aprint` first. In the
-meantime, `countdown` continues to run in the background and flushes
+over to `get_name`. Now, after the `lock.ainput` finishes, it does not
+yield to `countdown`. Instead, it runs its own `lock.aprint` first. In
+the meantime, `countdown` continues to run in the background and flushes
 all of its buffered messages afterwards.
 
 Flushing
@@ -143,9 +143,40 @@ from `main` before terminating.
 ```python
 from aio_stdout import flush
 
+@flush
 async def main() -> None:
-    async with flush:
-        pass
+    ...
+```
+
+Final Example
+-------------
+
+Combining all best practices, the final example should look something
+like this:
+
+```python
+import asyncio
+from aio_stdout import IOLock, ainput, aprint, flush
+
+async def countdown(n: int) -> None:
+    """Count down from `n`, taking `n` seconds to run."""
+    for i in range(n, 0, -1):
+        await aprint(i)
+        await asyncio.sleep(1)
+
+async def get_name() -> str:
+    """Ask the user for their name."""
+    async with IOLock() as lock:
+        name = await lock.ainput("What is your name? ")
+        await lock.aprint(f"Your name is {name}.")
+    return name
+
+@flush
+async def main() -> None:
+    await asyncio.gather(countdown(15), get_name())
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 Common Gotchas
@@ -154,40 +185,15 @@ Common Gotchas
 - Using `input` or `print` instead of `ainput` and `aprint` will push
   a message immediately to the console, potentially conflicting with
   `ainput` or `aprint`.
-- Using `ainput` or `aprint` instead of `io_lock.ainput` and
-  `io_lock.aprint` may produce **deadlock** due to having to
-  wait for the lock to release. As such, the `io_lock` is equipped
+- Using `ainput` or `aprint` instead of `lock.ainput` and
+  `lock.aprint` may produce **deadlock** due to having to
+  wait for the lock to release. As such, the `lock` is equipped
   with a default `timeout` limit of 10 seconds to avoid deadlock
   and explain to users this potential problem.
 '''
-from types import FunctionType
-from typing import get_type_hints
-from ._aio_stdout import *
+from ._aio_stdout import IOLock, ainput, aprint, flush
 
 __all__ = ["IOLock", "ainput", "aprint", "flush"]
 __author__ = "Jack Nguyen"
 __email__ = "jackyeenguyen@gmail.com"
-__version__ = "0.0.2"
-
-obj = None
-name = None
-method = None
-
-# Finalize type-hints.
-for obj in (IOLock, ainput, aprint, flush):
-    if isinstance(obj, FunctionType):
-        obj.__annotations__ = get_type_hints(obj)
-    if not isinstance(obj, type):
-        continue
-    obj.__annotations__ = get_type_hints(obj)
-    for name, method in vars(obj).items():
-        if isinstance(method, classmethod):
-            method.__func__.__annotations__ = get_type_hints(method.__func__)
-        elif callable(method):
-            method.__annotations__ = get_type_hints(method)
-
-del name
-del method
-del obj
-del get_type_hints
-del FunctionType
+__version__ = "0.0.3"

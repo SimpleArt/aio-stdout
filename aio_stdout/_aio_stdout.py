@@ -84,16 +84,16 @@ from aio_stdout import IOLock, ainput, aprint
 
 async def countdown(n: int) -> None:
     """Count down from `n`, taking `n` seconds to run."""
-    async with IOLock(n=5) as io_lock:
+    async with IOLock(n=5) as lock:
         for i in range(n, 0, -1):
-            await io_lock.aprint(i)
+            await lock.aprint(i)
             await asyncio.sleep(1)
 
 async def get_name() -> str:
     """Ask the user for their name."""
-    async with IOLock() as io_lock:
-        name = await io_lock.ainput("What is your name? ")
-        await io_lock.aprint(f"Your name is {name}.")
+    async with IOLock() as lock:
+        name = await lock.ainput("What is your name? ")
+        await lock.aprint(f"Your name is {name}.")
     return name
 
 async def main() -> None:
@@ -143,9 +143,40 @@ from `main` before terminating.
 ```python
 from aio_stdout import flush
 
+@flush
 async def main() -> None:
-    async with flush:
-        pass
+    ...
+```
+
+Final Example
+-------------
+
+Combining all best practices, the final example should look something
+like this:
+
+```python
+import asyncio
+from aio_stdout import IOLock, ainput, aprint, flush
+
+async def countdown(n: int) -> None:
+    """Count down from `n`, taking `n` seconds to run."""
+    for i in range(n, 0, -1):
+        await aprint(i)
+        await asyncio.sleep(1)
+
+async def get_name() -> str:
+    """Ask the user for their name."""
+    async with IOLock() as lock:
+        name = await lock.ainput("What is your name? ")
+        await lock.aprint(f"Your name is {name}.")
+    return name
+
+@flush
+async def main() -> None:
+    await asyncio.gather(countdown(15), get_name())
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 Common Gotchas
@@ -154,9 +185,9 @@ Common Gotchas
 - Using `input` or `print` instead of `ainput` and `aprint` will push
   a message immediately to the console, potentially conflicting with
   `ainput` or `aprint`.
-- Using `ainput` or `aprint` instead of `io_lock.ainput` and
-  `io_lock.aprint` may produce **deadlock** due to having to
-  wait for the lock to release. As such, the `io_lock` is equipped
+- Using `ainput` or `aprint` instead of `lock.ainput` and
+  `lock.aprint` may produce **deadlock** due to having to
+  wait for the lock to release. As such, the `lock` is equipped
   with a default `timeout` limit of 10 seconds to avoid deadlock
   and explain to users this potential problem.
 '''
@@ -170,7 +201,7 @@ from contextlib import AsyncContextDecorator
 from enum import Enum
 from functools import partial
 from types import TracebackType
-from typing import Any, ClassVar, Generic, IO, NoReturn, Optional, TypeVar, Union, overload
+from typing import Any, ClassVar, Generic, IO, NoReturn, Optional, TypeVar, Union, get_type_hints, overload
 
 if sys.version_info < (3, 9):
     from typing import Dict, Tuple, Type
@@ -220,7 +251,7 @@ class IOLock(asyncio.Lock):
     Attributes
     -----------
     Construct an IOLock using:
-        >>> io_lock = IOLock(n=..., timeout=...)
+        >>> lock = IOLock(n=..., timeout=...)
     By default, `n = None` and `timeout = 10`.
 
     n:
@@ -236,23 +267,23 @@ class IOLock(asyncio.Lock):
     --------
     Use it as a context manager to ensure you can't have printed messages
     in-between them.
-        >>> async with IOLock() as io_lock:
-        ...     name = await io_lock.ainput("What is your name? ")
-        ...     await io_lock.aprint(f"Your name is {name}.")
+        >>> async with IOLock() as lock:
+        ...     name = await lock.ainput("What is your name? ")
+        ...     await lock.aprint(f"Your name is {name}.")
         ...
         What is your name? (...)
         Your name is (...).
 
     WARNING
     --------
-    Using `aprint` with `block=True` or `ainput` inside of an `io_lock`
+    Using `aprint` with `block=True` or `ainput` inside of an `lock`
     block will cause deadlock, preventing your program from continuing.
-    Use `io_lock.ainput` and `io_lock.aprint` instead.
+    Use `lock.ainput` and `lock.aprint` instead.
 
-    Using `aprint` with `block=False` inside of an `io_lock` block
-    will delay the `aprint` until the `io_lock` block is finished.
+    Using `aprint` with `block=False` inside of an `lock` block will
+    delay the `aprint` until the `lock` block is finished.
 
-    With the default `io_lock.timeout` however, such deadlocks only hold for 10 seconds.
+    With the default `lock.timeout` however, such deadlocks only hold for 10 seconds.
     """
     _class_is_finished: ClassVar[asyncio.Event] = asyncio.Event()
     if sys.version_info < (3, 9):
@@ -430,10 +461,10 @@ class IOLock(asyncio.Lock):
                 # Warn the user if they timed out after 10 seconds and other IO is waiting.
                 if None is not timeout >= 10 and not (cls._class_queue.empty() and IO_QUEUE.empty()):
                     print(
-                        "An `io_lock` timed out after 10 seconds or more.",
+                        "An `IOLock` timed out after 10 seconds or more.",
                         "This is likely due to the use of `aprint` or `ainput`",
-                        "instead of `io_lock.aprint` or `io_lock.ainput` while",
-                        "inside of an `io_lock` block."
+                        "instead of `lock.aprint` or `lock.ainput` while",
+                        "inside of a `async with lock` block."
                     )
                 # Insert the global queue into the class queue.
                 global_queue = Queue()
@@ -627,11 +658,11 @@ async def ainput(*args: Any) -> str:
     Blocks the current coroutine from progressing until `input` is given.
 
     WARNING:
-        Using `ainput` inside of an `io_lock` block will cause deadlock,
+        Using `ainput` inside of an `IOLock` block will cause deadlock,
         preventing your program from continuing.
-        Use `io_lock.ainput` instead.
+        Use `lock.ainput` instead.
 
-        With the default `io_lock.timeout` however, such deadlocks only
+        With the default `lock.timeout` however, such deadlocks only
         hold for 10 seconds.
 
     NOTE:
@@ -670,14 +701,14 @@ async def aprint(*args: Any, block: bool = False, **kwargs: Any) -> None:
     continuing, such as when printing to a file.
 
     WARNING:
-        Using `aprint` with `block=True` inside of an `io_lock` block
+        Using `aprint` with `block=True` inside of an `IOLock` block
         will cause deadlock, preventing your program from continuing.
-        Use `io_lock.aprint` instead.
+        Use `lock.aprint` instead.
 
-        Using `aprint` with `block=False` inside of an `io_lock` block
-        will delay the `aprint` until the `io_lock` block is finished.
+        Using `aprint` with `block=False` inside of an `IOLock` block
+        will delay the `aprint` until the `lock` block is finished.
 
-        With the default `io_lock.timeout` however, such deadlocks only
+        With the default `lock.timeout` however, such deadlocks only
         hold for 10 seconds.
 
     NOTE:
@@ -706,3 +737,31 @@ async def aprint(*args: Any, block: bool = False, **kwargs: Any) -> None:
     # Wait at least once before returning so that the print can start running.
     else:
         await asyncio.sleep(0)
+
+# Finalize type-hints.
+IOLock.acquire.__annotations__ = {
+    "self": Self,
+    "return":
+        bool if sys.version_info < (3, 8)
+        else typing.Literal[True],
+}
+
+for hinted in (
+    IOLock,
+    IOLock.__init__,
+    IOLock.__aenter__,
+    IOLock.release,
+    IOLock._IOLock__exhaust_queue.__func__,
+    IOLock._IOLock__wait_event.__func__,
+    IOLock._execute_io.__func__,
+    IOLock._schedule_io,
+    IOLock.ainput,
+    IOLock.aprint,
+    IOLock.n.fget,
+    IOLock.timeout.fget,
+    Flush.__aenter__,
+    Flush.__aexit__,
+    ainput,
+    aprint,
+):
+    hinted.__annotations__ = get_type_hints(hinted)

@@ -359,10 +359,12 @@ class IOLock(asyncio.Lock):
         ...
 
     if sys.version_info < (3, 8):
+        @overload
         async def acquire(self: Self) -> bool:
             ...
 
     else:
+        @overload
         async def acquire(self: Self) -> typing.Literal[True]:
             ...
 

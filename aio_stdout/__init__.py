@@ -196,4 +196,4 @@ from ._aio_stdout import IOLock, ainput, aprint, flush
 __all__ = ["IOLock", "ainput", "aprint", "flush"]
 __author__ = "Jack Nguyen"
 __email__ = "jackyeenguyen@gmail.com"
-__version__ = "0.0.3"
+__version__ = "0.0.4"

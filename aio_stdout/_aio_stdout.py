@@ -192,12 +192,12 @@ Common Gotchas
   and explain to users this potential problem.
 '''
 import asyncio
+import functools
 import logging
 import sys
 import typing
 
 from asyncio import Queue
-from contextlib import AsyncContextDecorator
 from enum import Enum
 from functools import partial
 from types import TracebackType
@@ -233,6 +233,32 @@ __all__ = ["IOLock", "ainput", "aprint", "flush"]
 
 T = TypeVar("T")
 ET = TypeVar("ET", bound=BaseException)
+
+if sys.version_info < (3, 10):
+    FT = TypeVar("FT", bound=typing.Callable[..., typing.Awaitable[Any]])
+
+    class AsyncContextDecorator:
+
+        def __call__(self: "AsyncContextDecorator", func: FT) -> FT:
+            @functools.wraps(func)
+            async def wrapper(*args: Any, **kwargs: Any) -> Any:
+                async with self:
+                    return await func(*args, **kwargs)
+            return wrapper
+
+        def __aenter__(self: "AsyncContextDecorator") -> Any:
+            raise NotImplementedError
+
+        def __aexit__(
+            self: "AsyncContextDecorator",
+            exc_type: Optional[Type[ET]],
+            exc_value: Optional[ET],
+            traceback: Optional[TracebackType],
+        ) -> Any:
+            raise NotImplementedError
+
+else:
+    from contextlib import AsyncContextDecorator
 
 logger = logging.getLogger(__name__)
 

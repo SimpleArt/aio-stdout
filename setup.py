@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as readme_file:
 
 setuptools.setup(
     name="aio-stdout",
-    version="0.0.3",
+    version="0.0.4",
     description="The purpose of this package is to provide asynchronous variants of the builtin `input` and `print` functions.",
     packages=["aio_stdout"],
     python_requires=">=3.7",
